@@ -1,0 +1,198 @@
+# Project 3 — Infra + APM monitoring for 5 databases & microservices, with RCA.
+#
+#   services (OTel) ─traces─▶ otel-collector ─▶ jaeger
+#       │ /metrics
+#   5 DB exporters + node-exporter + cAdvisor ─▶ prometheus ─(alerts)─▶ rca-backend ─▶ dashboard
+#
+#   Run:  docker compose up --build
+#   UIs:  Dashboard+RCA http://localhost:8000 | Prometheus :9090 | Jaeger :16686
+
+name: apm-infra-rca
+
+services:
+  # ===================== Databases =====================
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports: ["5432:5432"]
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+      MYSQL_DATABASE: app
+    ports: ["3306:3306"]
+
+  mongo:
+    image: mongo:7
+    ports: ["27017:27017"]
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.1
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports: ["9200:9200"]
+
+  # ===================== DB exporters =====================
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://app:app@postgres:5432/app?sslmode=disable"
+    ports: ["9187:9187"]
+    depends_on: [postgres]
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.15.1
+    command: ["--config.my-cnf=/cfg/.my.cnf"]
+    volumes:
+      - ./exporters/mysqld-exporter.cnf:/cfg/.my.cnf:ro
+    ports: ["9104:9104"]
+    depends_on: [mysql]
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.41
+    command: ["--mongodb.uri=mongodb://mongo:27017", "--collect-all", "--compatible-mode"]
+    ports: ["9216:9216"]
+    depends_on: [mongo]
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports: ["9121:9121"]
+    depends_on: [redis]
+
+  elasticsearch-exporter:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.7.0
+    command: ["--es.uri=http://elasticsearch:9200"]
+    ports: ["9114:9114"]
+    depends_on: [elasticsearch]
+
+  # ===================== Infrastructure =====================
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports: ["9100:9100"]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports: ["8085:8080"]
+
+  # ===================== Observability backend =====================
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["9090:9090"]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports: ["16686:16686"]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports: ["4317:4317", "4318:4318"]
+    depends_on: [jaeger]
+
+  rca-backend:
+    build: ./rca
+    environment:
+      PROMETHEUS_URL: "http://prometheus:9090"
+    ports: ["8000:8000"]
+    depends_on: [prometheus]
+
+  # ===================== Microservices =====================
+  orders:
+    build: { context: ./services, args: { SERVICE: orders } }
+    environment: &otelenv
+      OTEL_SERVICE_NAME: orders
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      POSTGRES_DSN: "postgresql://app:app@postgres:5432/app"
+    ports: ["8091:8000"]
+    depends_on: [postgres, otel-collector]
+
+  catalog:
+    build: { context: ./services, args: { SERVICE: catalog } }
+    environment:
+      <<: *otelenv
+      OTEL_SERVICE_NAME: catalog
+      MYSQL_HOST: mysql
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+      MYSQL_DB: app
+    ports: ["8092:8000"]
+    depends_on: [mysql, otel-collector]
+
+  profiles:
+    build: { context: ./services, args: { SERVICE: profiles } }
+    environment:
+      <<: *otelenv
+      OTEL_SERVICE_NAME: profiles
+      MONGO_URI: "mongodb://mongo:27017"
+    ports: ["8093:8000"]
+    depends_on: [mongo, otel-collector]
+
+  sessions:
+    build: { context: ./services, args: { SERVICE: sessions } }
+    environment:
+      <<: *otelenv
+      OTEL_SERVICE_NAME: sessions
+      REDIS_URL: "redis://redis:6379/0"
+    ports: ["8094:8000"]
+    depends_on: [redis, otel-collector]
+
+  search:
+    build: { context: ./services, args: { SERVICE: search } }
+    environment:
+      <<: *otelenv
+      OTEL_SERVICE_NAME: search
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+    ports: ["8095:8000"]
+    depends_on: [elasticsearch, otel-collector]
+
+  gateway:
+    build: { context: ./services, args: { SERVICE: gateway } }
+    environment:
+      <<: *otelenv
+      OTEL_SERVICE_NAME: gateway
+      ORDERS_URL: "http://orders:8000"
+      CATALOG_URL: "http://catalog:8000"
+      PROFILES_URL: "http://profiles:8000"
+      SESSIONS_URL: "http://sessions:8000"
+      SEARCH_URL: "http://search:8000"
+    ports: ["8090:8000"]
+    depends_on: [orders, catalog, profiles, sessions, search, otel-collector]

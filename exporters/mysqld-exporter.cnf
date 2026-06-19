@@ -1,0 +1,5 @@
+[client]
+user = app
+password = app
+host = mysql
+port = 3306

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Infra/APM Monitoring + RCA</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>🛰️ Infra / APM Monitoring <span class="muted">+ Root Cause Analysis</span></h1>
+    <span id="conn" class="badge offline">connecting…</span>
+  </header>
+
+  <section id="rca" class="card rca-ok">
+    <h2>Root Cause Analysis</h2>
+    <div id="rca-body">Waiting for data…</div>
+  </section>
+
+  <section class="card">
+    <h2>Service Topology</h2>
+    <div class="legend">
+      <span><i class="dot ok"></i> healthy</span>
+      <span><i class="dot alert"></i> alerting</span>
+      <span><i class="dot root"></i> root cause</span>
+      <span><i class="dot affected"></i> affected</span>
+    </div>
+    <svg id="topo" width="100%" height="340"></svg>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Infrastructure</h2>
+      <div id="infra" class="gauges"></div>
+    </section>
+    <section class="card">
+      <h2>Databases</h2>
+      <table id="db-table"><thead><tr><th>Database</th><th>p95</th><th>err/s</th><th>Reachable</th><th>Exporter</th></tr></thead><tbody></tbody></table>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Services</h2>
+      <table id="svc-table"><thead><tr><th>Service</th><th>req/s</th><th>p95</th><th>err %</th><th>Up</th></tr></thead><tbody></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Active Alerts</h2>
+      <ul id="alerts" class="alerts"><li class="muted">none</li></ul>
+    </section>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

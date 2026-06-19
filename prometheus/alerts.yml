@@ -1,0 +1,110 @@
+# Alert rules. The RCA engine reads firing alerts from Prometheus
+# (/api/v1/alerts) and correlates them against the service->DB topology.
+# Labels (component / kind / db / service / severity) drive that correlation.
+groups:
+  - name: databases
+    rules:
+      - alert: DatabaseExporterDown
+        expr: up{job="db-exporters"} == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.db }} exporter is down"
+
+      - alert: ServiceDBUnreachable
+        expr: service_db_up == 0
+        for: 30s
+        labels: { severity: critical, kind: database }
+        annotations:
+          summary: "Database {{ $labels.db }} unreachable from its service"
+
+      - alert: HighDBQueryLatency
+        expr: histogram_quantile(0.95, sum by (db, le) (rate(db_query_duration_seconds_bucket[1m]))) > 0.5
+        for: 30s
+        labels: { severity: warning, kind: database }
+        annotations:
+          summary: "High p95 query latency on {{ $labels.db }}"
+
+      - alert: HighDBErrorRate
+        expr: sum by (db) (rate(db_query_errors_total[2m])) > 0.2
+        for: 30s
+        labels: { severity: critical, kind: database }
+        annotations:
+          summary: "Elevated query error rate on {{ $labels.db }}"
+
+      - alert: PostgresConnectionsSaturated
+        expr: sum(pg_stat_activity_count) / max(pg_settings_max_connections) > 0.8
+        for: 30s
+        labels: { severity: warning, kind: database, db: postgres, component: postgres }
+        annotations:
+          summary: "PostgreSQL connection pool > 80% utilized"
+
+      - alert: MySQLConnectionsSaturated
+        expr: mysql_global_status_threads_connected / mysql_global_variables_max_connections > 0.8
+        for: 30s
+        labels: { severity: warning, kind: database, db: mysql, component: mysql }
+        annotations:
+          summary: "MySQL connections > 80% of max_connections"
+
+      - alert: ElasticsearchClusterRed
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 30s
+        labels: { severity: critical, kind: database, db: elasticsearch, component: elasticsearch }
+        annotations:
+          summary: "Elasticsearch cluster health is RED"
+
+      - alert: RedisRejectingConnections
+        expr: rate(redis_rejected_connections_total[2m]) > 0
+        for: 30s
+        labels: { severity: warning, kind: database, db: redis, component: redis }
+        annotations:
+          summary: "Redis is rejecting connections (maxclients?)"
+
+  - name: services
+    rules:
+      - alert: ServiceDown
+        expr: up{job="microservices"} == 0
+        for: 30s
+        labels: { severity: critical, kind: service }
+        annotations:
+          summary: "Service {{ $labels.service }} is down"
+
+      - alert: HighServiceLatency
+        expr: histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket[1m]))) > 1
+        for: 30s
+        labels: { severity: warning, kind: service }
+        annotations:
+          summary: "High p95 latency on {{ $labels.service }}"
+
+      - alert: HighServiceErrorRate
+        expr: |
+          sum by (service) (rate(http_request_duration_seconds_count{status=~"5.."}[2m]))
+            / sum by (service) (rate(http_request_duration_seconds_count[2m])) > 0.1
+        for: 30s
+        labels: { severity: critical, kind: service }
+        annotations:
+          summary: "Service {{ $labels.service }} error rate > 10%"
+
+  - name: infra
+    rules:
+      - alert: HighNodeCPU
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100) > 85
+        for: 1m
+        labels: { severity: warning, kind: infra, component: node }
+        annotations:
+          summary: "Host CPU > 85%"
+
+      - alert: HighNodeMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 1m
+        labels: { severity: warning, kind: infra, component: node }
+        annotations:
+          summary: "Host memory > 90%"
+
+      - alert: LowDiskSpace
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+        for: 1m
+        labels: { severity: critical, kind: infra, component: node }
+        annotations:
+          summary: "Root filesystem < 10% free"

@@ -1,0 +1,70 @@
+"""gateway-service — public entry point that fans out to the DB-backed services.
+
+A single /checkout call touches all five services (and therefore all five
+databases), producing one distributed trace and exercising the whole topology —
+which is what makes the RCA correlation meaningful.
+"""
+import asyncio
+import logging
+import os
+import random
+
+import httpx
+from fastapi import FastAPI
+
+from common.observability import setup_metrics
+
+log = logging.getLogger("gateway")
+
+SERVICES = {
+    "orders": os.getenv("ORDERS_URL", "http://orders:8000"),
+    "catalog": os.getenv("CATALOG_URL", "http://catalog:8000"),
+    "profiles": os.getenv("PROFILES_URL", "http://profiles:8000"),
+    "sessions": os.getenv("SESSIONS_URL", "http://sessions:8000"),
+    "search": os.getenv("SEARCH_URL", "http://search:8000"),
+}
+
+app = FastAPI(title="gateway-service")
+setup_metrics(app)
+_client = httpx.AsyncClient(timeout=8.0)
+
+
+async def _call(method: str, url: str):
+    try:
+        resp = await _client.request(method, url)
+        return resp.json()
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc)}
+
+
+@app.post("/checkout/{user_id}")
+async def checkout(user_id: str):
+    sku = f"SKU-{random.randint(1, 50)}"
+    results = await asyncio.gather(
+        _call("PUT", f"{SERVICES['sessions']}/sessions/{user_id}"),
+        _call("GET", f"{SERVICES['profiles']}/profiles/{user_id}"),
+        _call("GET", f"{SERVICES['catalog']}/catalog/item-{random.randint(1, 100)}"),
+        _call("POST", f"{SERVICES['orders']}/orders/{sku}?qty={random.randint(1, 5)}"),
+        _call("GET", f"{SERVICES['search']}/search?q=item-{random.randint(1, 100)}"),
+    )
+    keys = ["session", "profile", "catalog", "order", "search"]
+    return {"user_id": user_id, **dict(zip(keys, results))}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "downstreams": list(SERVICES)}
+
+
+async def _workload():
+    while True:
+        try:
+            await checkout(f"user-{random.randint(1, 100)}")
+        except Exception:  # noqa: BLE001
+            pass
+        await asyncio.sleep(random.uniform(0.8, 2.0))
+
+
+@app.on_event("startup")
+async def startup():
+    asyncio.create_task(_workload())

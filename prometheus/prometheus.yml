@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Application microservices (HTTP metrics + custom db_query_* metrics)
+  - job_name: microservices
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["gateway:8000"]
+        labels: { service: gateway, component: gateway, kind: service }
+      - targets: ["orders:8000"]
+        labels: { service: orders, component: orders, kind: service }
+      - targets: ["catalog:8000"]
+        labels: { service: catalog, component: catalog, kind: service }
+      - targets: ["profiles:8000"]
+        labels: { service: profiles, component: profiles, kind: service }
+      - targets: ["sessions:8000"]
+        labels: { service: sessions, component: sessions, kind: service }
+      - targets: ["search:8000"]
+        labels: { service: search, component: search, kind: service }
+
+  # Database exporters
+  - job_name: db-exporters
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels: { db: postgres, component: postgres, kind: database }
+      - targets: ["mysqld-exporter:9104"]
+        labels: { db: mysql, component: mysql, kind: database }
+      - targets: ["mongodb-exporter:9216"]
+        labels: { db: mongodb, component: mongodb, kind: database }
+      - targets: ["redis-exporter:9121"]
+        labels: { db: redis, component: redis, kind: database }
+      - targets: ["elasticsearch-exporter:9114"]
+        labels: { db: elasticsearch, component: elasticsearch, kind: database }
+
+  # Infrastructure
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels: { component: node, kind: infra }
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels: { component: containers, kind: infra }
