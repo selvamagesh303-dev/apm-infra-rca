@@ -51,6 +51,13 @@ curl -X DELETE localhost:8091/orders/1
 ```
 Interactive docs per service at `/docs` (e.g. http://localhost:8091/docs).
 
+### CRUD Admin UI
+
+A unified web console at **http://localhost:8090/admin/** — a tab per resource with a
+create form and a live table (edit / delete per row). It's served by the gateway, which
+proxies `/admin/api/{service}/...` to each service (same-origin, so no CORS), so you can
+manage all five databases from one page without touching curl or Swagger.
+
 ## The RCA engine
 
 Prometheus evaluates alert rules (`prometheus/alerts.yml`). The RCA backend reads
@@ -75,8 +82,10 @@ The services self-generate load, so data flows immediately. Open:
 | UI | URL |
 |---|---|
 | **Dashboard + RCA** | http://localhost:8000 |
+| **CRUD Admin console** | http://localhost:8090/admin/ |
 | Prometheus (alerts/targets) | http://localhost:9090 |
 | Jaeger (traces) | http://localhost:16686 |
+| Per-service Swagger | http://localhost:8091/docs … 8095/docs |
 
 Then trigger an incident to watch RCA work:
 ```bash

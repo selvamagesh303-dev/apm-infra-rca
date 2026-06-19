@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRUD Admin — apm-infra-rca</title>
+  <link rel="stylesheet" href="/admin/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>🗂️ CRUD Admin Console</h1>
+    <span class="muted">orders · catalog · profiles · sessions · search</span>
+  </header>
+
+  <nav id="tabs"></nav>
+
+  <main>
+    <section class="card">
+      <h2 id="form-title">Create</h2>
+      <form id="crud-form" autocomplete="off"></form>
+      <div id="msg" class="msg"></div>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <h2 id="list-title">Items</h2>
+        <button class="btn" id="refresh">↻ Refresh</button>
+      </div>
+      <table id="table"><thead></thead><tbody></tbody></table>
+    </section>
+  </main>
+
+  <script src="/admin/app.js"></script>
+</body>
+</html>

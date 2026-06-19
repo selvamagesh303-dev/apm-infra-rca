@@ -10,9 +10,12 @@ import os
 import random
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.staticfiles import StaticFiles
 
 from common.observability import setup_metrics
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 log = logging.getLogger("gateway")
 
@@ -56,6 +59,27 @@ async def health():
     return {"status": "ok", "downstreams": list(SERVICES)}
 
 
+@app.api_route("/admin/api/{service}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def admin_proxy(service: str, path: str, request: Request):
+    """Same-origin proxy so the admin UI can do CRUD against any service without CORS."""
+    base = SERVICES.get(service)
+    if not base:
+        return Response(content='{"error":"unknown service"}', status_code=404, media_type="application/json")
+    body = await request.body()
+    try:
+        resp = await _client.request(
+            request.method,
+            f"{base}/{path}",
+            params=dict(request.query_params),
+            content=body or None,
+            headers={"content-type": request.headers.get("content-type", "application/json")} if body else None,
+        )
+        return Response(content=resp.content, status_code=resp.status_code,
+                        media_type=resp.headers.get("content-type", "application/json"))
+    except Exception as exc:  # noqa: BLE001
+        return Response(content=f'{{"error":"{exc}"}}', status_code=502, media_type="application/json")
+
+
 async def _workload():
     while True:
         try:
@@ -68,3 +92,7 @@ async def _workload():
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(_workload())
+
+
+# CRUD admin console (served same-origin; routes above take precedence).
+app.mount("/admin", StaticFiles(directory=STATIC_DIR, html=True), name="admin")
