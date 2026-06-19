@@ -29,9 +29,9 @@ setup_metrics(app)
 _client = httpx.AsyncClient(timeout=8.0)
 
 
-async def _call(method: str, url: str):
+async def _call(method: str, url: str, json: dict | None = None):
     try:
-        resp = await _client.request(method, url)
+        resp = await _client.request(method, url, json=json)
         return resp.json()
     except Exception as exc:  # noqa: BLE001
         return {"error": str(exc)}
@@ -41,11 +41,11 @@ async def _call(method: str, url: str):
 async def checkout(user_id: str):
     sku = f"SKU-{random.randint(1, 50)}"
     results = await asyncio.gather(
-        _call("PUT", f"{SERVICES['sessions']}/sessions/{user_id}"),
+        _call("POST", f"{SERVICES['sessions']}/sessions", {"session_id": user_id, "user": user_id}),
         _call("GET", f"{SERVICES['profiles']}/profiles/{user_id}"),
-        _call("GET", f"{SERVICES['catalog']}/catalog/item-{random.randint(1, 100)}"),
-        _call("POST", f"{SERVICES['orders']}/orders/{sku}?qty={random.randint(1, 5)}"),
-        _call("GET", f"{SERVICES['search']}/search?q=item-{random.randint(1, 100)}"),
+        _call("GET", f"{SERVICES['catalog']}/products?limit=5"),
+        _call("POST", f"{SERVICES['orders']}/orders", {"sku": sku, "qty": random.randint(1, 5)}),
+        _call("GET", f"{SERVICES['search']}/documents?q=item-{random.randint(1, 100)}"),
     )
     keys = ["session", "profile", "catalog", "order", "search"]
     return {"user_id": user_id, **dict(zip(keys, results))}

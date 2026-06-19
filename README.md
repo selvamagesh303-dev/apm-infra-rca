@@ -27,6 +27,30 @@ name the *root cause* instead of dumping a wall of symptoms.
 | **Services** | gateway, orders, catalog, profiles, sessions, search | OpenTelemetry traces (→ Jaeger) + HTTP metrics (→ Prometheus) |
 | **Infrastructure** | host CPU / memory / disk, per-container usage | node-exporter + cAdvisor |
 
+### CRUD APIs
+
+Each DB-backed service exposes a full REST CRUD resource (Pydantic-validated).
+Every operation is timed into `db_query_duration_seconds{db,operation}` and traced.
+
+| Service | DB | Resource | Endpoints |
+|---|---|---|---|
+| orders | PostgreSQL | `/orders` | `POST` · `GET` (list) · `GET /{id}` · `PUT /{id}` · `DELETE /{id}` |
+| catalog | MySQL | `/products` | `POST` · `GET` · `GET /{id}` · `PUT /{id}` · `DELETE /{id}` |
+| profiles | MongoDB | `/profiles` | `POST` · `GET` · `GET /{user_id}` · `PUT /{user_id}` · `DELETE /{user_id}` |
+| sessions | Redis | `/sessions` | `POST` · `GET` · `GET /{id}` · `PUT /{id}` · `DELETE /{id}` |
+| search | Elasticsearch | `/documents` | `POST` · `GET?q=` · `GET /{id}` · `PUT /{id}` · `DELETE /{id}` |
+
+Example (ports are host-mapped per service — orders 8091, catalog 8092, profiles
+8093, sessions 8094, search 8095):
+```bash
+curl -X POST localhost:8091/orders -H 'content-type: application/json' -d '{"sku":"SKU-1","qty":3}'
+curl localhost:8091/orders            # list
+curl localhost:8091/orders/1          # read
+curl -X PUT localhost:8091/orders/1 -H 'content-type: application/json' -d '{"sku":"SKU-1","qty":9}'
+curl -X DELETE localhost:8091/orders/1
+```
+Interactive docs per service at `/docs` (e.g. http://localhost:8091/docs).
+
 ## The RCA engine
 
 Prometheus evaluates alert rules (`prometheus/alerts.yml`). The RCA backend reads
