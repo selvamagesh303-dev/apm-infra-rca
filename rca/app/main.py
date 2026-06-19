@@ -32,11 +32,11 @@ def _by_label(rows: list[dict], label: str) -> dict[str, float]:
 
 async def summarize_services() -> list[dict]:
     rate, p95, err, up = await asyncio.gather(
-        prometheus.query("sum by (service) (rate(http_request_duration_seconds_count[1m]))"),
+        prometheus.query("sum by (service) (rate(http_requests_total[1m]))"),
         prometheus.query("histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket[1m])))"),
         prometheus.query(
-            "sum by (service) (rate(http_request_duration_seconds_count{status=~\"5..\"}[2m])) "
-            "/ sum by (service) (rate(http_request_duration_seconds_count[2m]))"
+            "sum by (service) (rate(http_requests_total{status=\"5xx\"}[2m])) "
+            "/ sum by (service) (rate(http_requests_total[2m]))"
         ),
         prometheus.query('up{job="microservices"}'),
     )

@@ -78,8 +78,8 @@ groups:
 
       - alert: HighServiceErrorRate
         expr: |
-          sum by (service) (rate(http_request_duration_seconds_count{status=~"5.."}[2m]))
-            / sum by (service) (rate(http_request_duration_seconds_count[2m])) > 0.1
+          sum by (service) (rate(http_requests_total{status="5xx"}[2m]))
+            / sum by (service) (rate(http_requests_total[2m])) > 0.1
         for: 30s
         labels: { severity: critical, kind: service }
         annotations:
